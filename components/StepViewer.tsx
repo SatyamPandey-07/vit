@@ -1,19 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { clsx } from "clsx";
 import { SolveStep, ConstraintKind } from "@/lib/solver/types";
-import {
-  Play,
-  Pause,
-  SkipForward,
-  SkipBack,
-  ChevronRight,
-  ChevronLeft,
-  Zap,
-  AlertCircle,
-  CheckCircle2,
-} from "lucide-react";
 
 interface StepViewerProps {
   steps: SolveStep[];
@@ -28,33 +16,31 @@ interface StepViewerProps {
   onSpeedChange: (speed: number) => void;
 }
 
-const CONSTRAINT_META: Record<
-  ConstraintKind,
-  { label: string; color: string; bg: string }
-> = {
-  classic: { label: "Classic", color: "#6366f1", bg: "bg-indigo-500/15" },
-  killer: { label: "Killer", color: "#f59e0b", bg: "bg-amber-500/15" },
-  thermo: { label: "Thermo", color: "#ef4444", bg: "bg-red-500/15" },
-  arrow: { label: "Arrow", color: "#22d3ee", bg: "bg-cyan-500/15" },
-  kropki: { label: "Kropki", color: "#a855f7", bg: "bg-purple-500/15" },
-  evenOdd: { label: "Even/Odd", color: "#10b981", bg: "bg-emerald-500/15" },
-  diagonal: { label: "Diagonal", color: "#f97316", bg: "bg-orange-500/15" },
+const CONSTRAINT_LABEL: Record<ConstraintKind, string> = {
+  classic:  "Classic",
+  killer:   "Killer",
+  thermo:   "Thermo",
+  arrow:    "Arrow",
+  kropki:   "Kropki",
+  evenOdd:  "Even/Odd",
+  diagonal: "Diagonal",
 };
 
-const STEP_TYPE_ICON: Record<string, React.ReactNode> = {
-  constraint_applied: <Zap size={14} />,
-  candidate_removed: <AlertCircle size={14} />,
-  value_fixed: <CheckCircle2 size={14} />,
-  solving_start: <ChevronRight size={14} />,
-  solving_complete: <CheckCircle2 size={14} />,
+const CONSTRAINT_COLOR: Record<ConstraintKind, string> = {
+  classic:  "var(--c-classic)",
+  killer:   "var(--c-killer)",
+  thermo:   "var(--c-thermo)",
+  arrow:    "var(--c-arrow)",
+  kropki:   "var(--c-kropki)",
+  evenOdd:  "var(--c-evenodd)",
+  diagonal: "var(--c-diagonal)",
 };
 
 const SPEED_OPTIONS = [
-  { label: "0.5×", value: 2000 },
-  { label: "1×", value: 1000 },
-  { label: "2×", value: 500 },
-  { label: "5×", value: 200 },
-  { label: "10×", value: 100 },
+  { label: "0.5×", ms: 2000 },
+  { label: "1×",   ms: 1000 },
+  { label: "2×",   ms: 500  },
+  { label: "5×",   ms: 200  },
 ];
 
 export default function StepViewer({
@@ -69,177 +55,144 @@ export default function StepViewer({
   onJump,
   onSpeedChange,
 }: StepViewerProps) {
-  const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [currentStepIdx]);
 
   const current = steps[currentStepIdx];
+  const pct = steps.length ? ((currentStepIdx + 1) / steps.length) * 100 : 0;
 
-  // Auto-scroll step list
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [currentStepIdx]);
-
-  if (steps.length === 0) {
+  if (!steps.length) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-3">
-        <Zap size={32} className="opacity-40" />
-        <p className="text-sm">No steps yet. Solve a puzzle to see visualization.</p>
+      <div style={{ padding: "32px 0", textAlign: "center", color: "var(--text-subtle)", fontSize: "0.875rem" }}>
+        Solve a puzzle to see steps.
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      {/* ── Current step detail ── */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, height: "100%" }}>
+
+      {/* ── Step detail ─────────────────────────────────── */}
       {current && (
-        <div className="rounded-xl border border-slate-700/60 bg-slate-800/50 p-4 space-y-3">
-          {/* Header */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={clsx(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold",
-                CONSTRAINT_META[current.constraint].bg
-              )}
-              style={{ color: CONSTRAINT_META[current.constraint].color }}
-            >
-              {STEP_TYPE_ICON[current.type]}
-              {CONSTRAINT_META[current.constraint].label}
+        <div style={{ padding: 14, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-subtle)", display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Type + constraint badge */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <span style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              padding: "2px 8px",
+              borderRadius: 4,
+              background: `color-mix(in srgb, ${CONSTRAINT_COLOR[current.constraint]} 12%, transparent)`,
+              color: CONSTRAINT_COLOR[current.constraint],
+              border: `1px solid color-mix(in srgb, ${CONSTRAINT_COLOR[current.constraint]} 30%, transparent)`,
+            }}>
+              {CONSTRAINT_LABEL[current.constraint]}
+              <span style={{ fontWeight: 400, opacity: 0.7 }}>· {current.type.replace(/_/g, " ")}</span>
             </span>
-            <span className="text-xs text-slate-500 ml-auto">
-              Step {currentStepIdx + 1} / {steps.length}
+            <span style={{ fontSize: "0.75rem", color: "var(--text-subtle)" }}>
+              {currentStepIdx + 1} / {steps.length}
             </span>
           </div>
 
           {/* Equation */}
-          <div className="rounded-lg bg-slate-900/80 border border-slate-700/40 px-3 py-2">
-            <p className="text-xs text-slate-400 mb-1 font-medium uppercase tracking-wide">
+          <div style={{ padding: "8px 12px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6 }}>
+            <p style={{ fontSize: "0.6875rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-subtle)", marginBottom: 4 }}>
               Equation
             </p>
-            <code className="text-sm font-mono text-amber-300 break-all">
+            <code style={{ fontSize: "0.8125rem", color: "var(--text)", wordBreak: "break-all", display: "block" }}>
               {current.equation}
             </code>
           </div>
 
           {/* Reason */}
-          <p className="text-xs text-slate-300 leading-relaxed">{current.reason}</p>
+          <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+            {current.reason}
+          </p>
 
-          {/* Before / After candidates */}
+          {/* Before / after */}
           {Object.keys(current.before).length > 0 && (
-            <div className="grid grid-cols-2 gap-2">
-              <CandidateBox label="Before" data={current.before} color="#94a3b8" />
-              <CandidateBox label="After" data={current.after} color="#6366f1" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <CandBox label="Before" data={current.before} dimmed />
+              <CandBox label="After"  data={current.after}  />
             </div>
           )}
         </div>
       )}
 
-      {/* ── Playback controls ── */}
-      <div className="flex flex-col gap-3">
-        {/* Progress bar */}
-        <div className="relative h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
-          <div
-            className="absolute left-0 top-0 h-full rounded-full transition-all duration-300"
-            style={{
-              width: `${((currentStepIdx + 1) / steps.length) * 100}%`,
-              background: "linear-gradient(90deg, #6366f1, #a855f7)",
-            }}
-          />
+      {/* ── Playback controls ────────────────────────────── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Progress */}
+        <div style={{ height: 2, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: "var(--text)", transition: "width 0.2s" }} />
         </div>
 
         {/* Buttons */}
-        <div className="flex items-center gap-2 justify-center">
-          <ControlBtn onClick={() => onJump(0)} title="First" disabled={currentStepIdx === 0}>
-            <SkipBack size={16} />
-          </ControlBtn>
-          <ControlBtn onClick={onPrev} title="Previous" disabled={currentStepIdx === 0}>
-            <ChevronLeft size={18} />
-          </ControlBtn>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
+          <IconBtn onClick={() => onJump(0)} disabled={currentStepIdx === 0} title="First">⏮</IconBtn>
+          <IconBtn onClick={onPrev}           disabled={currentStepIdx === 0} title="Previous">‹</IconBtn>
 
           <button
             onClick={isPlaying ? onPause : onPlay}
-            className="flex items-center justify-center w-11 h-11 rounded-full text-white font-bold transition-all hover:scale-105 active:scale-95 shadow-lg"
-            style={{
-              background: isPlaying
-                ? "linear-gradient(135deg, #f59e0b, #ef4444)"
-                : "linear-gradient(135deg, #6366f1, #a855f7)",
-              boxShadow: isPlaying ? "0 0 20px rgba(239,68,68,0.4)" : "0 0 20px rgba(99,102,241,0.4)",
-            }}
+            className="btn btn-primary"
+            style={{ minWidth: 80, justifyContent: "center" }}
           >
-            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+            {isPlaying ? "Pause" : "Play"}
           </button>
 
-          <ControlBtn
-            onClick={onNext}
-            title="Next"
-            disabled={currentStepIdx === steps.length - 1}
-          >
-            <ChevronRight size={18} />
-          </ControlBtn>
-          <ControlBtn
-            onClick={() => onJump(steps.length - 1)}
-            title="Last"
-            disabled={currentStepIdx === steps.length - 1}
-          >
-            <SkipForward size={16} />
-          </ControlBtn>
+          <IconBtn onClick={onNext}           disabled={currentStepIdx === steps.length - 1} title="Next">›</IconBtn>
+          <IconBtn onClick={() => onJump(steps.length - 1)} disabled={currentStepIdx === steps.length - 1} title="Last">⏭</IconBtn>
         </div>
 
-        {/* Speed selector */}
-        <div className="flex items-center gap-1.5 justify-center">
-          <span className="text-xs text-slate-500 mr-1">Speed:</span>
-          {SPEED_OPTIONS.map((opt) => (
+        {/* Speed */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
+          <span style={{ fontSize: "0.75rem", color: "var(--text-subtle)", marginRight: 4 }}>Speed:</span>
+          {SPEED_OPTIONS.map(o => (
             <button
-              key={opt.value}
-              onClick={() => onSpeedChange(opt.value)}
-              className={clsx(
-                "px-2 py-0.5 rounded text-xs font-medium transition-all",
-                speed === opt.value
-                  ? "bg-indigo-600 text-white"
-                  : "bg-slate-700/50 text-slate-400 hover:bg-slate-700"
-              )}
+              key={o.ms}
+              onClick={() => onSpeedChange(o.ms)}
+              style={{
+                padding: "2px 8px",
+                borderRadius: 4,
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                border: "1px solid var(--border)",
+                background: speed === o.ms ? "var(--text)" : "transparent",
+                color: speed === o.ms ? "var(--bg)" : "var(--text-muted)",
+                transition: "all 0.15s",
+              }}
             >
-              {opt.label}
+              {o.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* ── Step list ── */}
-      <div
-        ref={listRef}
-        className="flex-1 overflow-y-auto space-y-1 pr-1 min-h-0 scrollbar-thin scrollbar-thumb-slate-700"
-        style={{ maxHeight: "300px" }}
-      >
+      {/* ── Step list ────────────────────────────────────── */}
+      <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 2, minHeight: 0 }}>
         {steps.map((step, idx) => {
-          const meta = CONSTRAINT_META[step.constraint];
-          const isActive = idx === currentStepIdx;
+          const active = idx === currentStepIdx;
+          const color = CONSTRAINT_COLOR[step.constraint];
           return (
             <button
               key={step.step_id}
-              ref={isActive ? activeRef : undefined}
+              ref={active ? activeRef : undefined}
               onClick={() => onJump(idx)}
-              className={clsx(
-                "w-full text-left px-3 py-2 rounded-lg text-xs flex items-start gap-2 transition-all",
-                isActive
-                  ? "bg-slate-700/80 border border-indigo-500/50 text-white"
-                  : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-              )}
+              className={`step-item${active ? " active" : ""}`}
+              style={{ textAlign: "left", background: undefined }} // handled by CSS class
             >
-              <span
-                className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5"
-                style={{ background: meta.color }}
-              />
-              <span className="flex-1 line-clamp-1">
-                <span className="font-semibold" style={{ color: meta.color }}>
-                  [{meta.label}]
-                </span>{" "}
-                {step.equation}
-              </span>
-              {STEP_TYPE_ICON[step.type] && (
-                <span className="flex-shrink-0 opacity-60" style={{ color: meta.color }}>
-                  {STEP_TYPE_ICON[step.type]}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0, display: "inline-block" }} />
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color }}>
+                  [{CONSTRAINT_LABEL[step.constraint]}]
                 </span>
-              )}
+                <span style={{ fontSize: "0.75rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
+                  {step.equation}
+                </span>
+              </span>
             </button>
           );
         })}
@@ -248,56 +201,42 @@ export default function StepViewer({
   );
 }
 
-function ControlBtn({
-  onClick,
-  disabled,
-  title,
-  children,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-  children: React.ReactNode;
-}) {
+function IconBtn({ onClick, disabled, title, children }: { onClick: () => void; disabled?: boolean; title: string; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={clsx(
-        "w-9 h-9 flex items-center justify-center rounded-lg transition-all",
-        disabled
-          ? "text-slate-600 cursor-not-allowed"
-          : "text-slate-300 hover:bg-slate-700/60 hover:text-white active:scale-95"
-      )}
+      style={{
+        width: 32, height: 32,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        borderRadius: 6,
+        border: "1px solid var(--border)",
+        background: "transparent",
+        color: disabled ? "var(--text-subtle)" : "var(--text-muted)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontSize: "1rem",
+        fontWeight: 600,
+        transition: "all 0.15s",
+      }}
     >
       {children}
     </button>
   );
 }
 
-function CandidateBox({
-  label,
-  data,
-  color,
-}: {
-  label: string;
-  data: Record<string, number[]>;
-  color: string;
-}) {
+function CandBox({ label, data, dimmed }: { label: string; data: Record<string, number[]>; dimmed?: boolean }) {
   return (
-    <div className="rounded-lg bg-slate-900/60 border border-slate-700/30 p-2">
-      <p className="text-[10px] text-slate-500 mb-1 font-medium uppercase tracking-wide">
+    <div style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)" }}>
+      <p style={{ fontSize: "0.625rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-subtle)", marginBottom: 4 }}>
         {label}
       </p>
-      {Object.entries(data).map(([key, vals]) => (
-        <div key={key} className="flex items-center gap-1 text-[11px]">
-          <span className="text-slate-500">({key})</span>
-          <span className="font-mono" style={{ color }}>
-            {"{"}
-            {vals.join(",")}
-            {"}"}
-          </span>
+      {Object.entries(data).map(([k, vs]) => (
+        <div key={k} style={{ fontSize: "0.75rem", display: "flex", gap: 4, alignItems: "baseline" }}>
+          <span style={{ color: "var(--text-subtle)" }}>({k})</span>
+          <code style={{ color: dimmed ? "var(--text-muted)" : "var(--text)" }}>
+            {"{" + vs.join(",") + "}"}
+          </code>
         </div>
       ))}
     </div>

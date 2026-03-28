@@ -1,84 +1,249 @@
 @import "tailwindcss";
 
+/* ── Design tokens ─────────────────────────────────────── */
 :root {
-  --font-inter: "Inter", system-ui, sans-serif;
+  --bg:          #ffffff;
+  --bg-subtle:   #fafafa;
+  --bg-muted:    #f4f4f5;
+  --surface:     #ffffff;
+  --border:      #e4e4e7;
+  --border-strong: #a1a1aa;
+  --border-grid: #d4d4d8;
+  --border-box:  #3f3f46;
+
+  --text:        #09090b;
+  --text-muted:  #71717a;
+  --text-subtle: #a1a1aa;
+
+  --accent:      #09090b;
+  --accent-soft: #f4f4f5;
+
+  --selection-bg: #e4e4e7;
+  --selection-border: #09090b;
+
+  /* Constraint colours — muted, professional */
+  --c-classic:  #3f3f46;
+  --c-killer:   #92400e;
+  --c-thermo:   #7f1d1d;
+  --c-arrow:    #1e3a5f;
+  --c-kropki:   #3b0764;
+  --c-evenodd:  #14532d;
+  --c-diagonal: #7c2d12;
+
+  --font: var(--font-space, "Space Grotesk"), "IBM Plex Sans", system-ui, sans-serif;
+  --font-code: var(--font-mono, "IBM Plex Mono"), "Fira Code", monospace;
 }
 
-* {
-  box-sizing: border-box;
+/* ── Base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-html,
 body {
-  height: 100%;
-  background: #0b0d14;
-  color: #f1f5f9;
-  font-family: var(--font-inter);
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+/* ── Typography ────────────────────────────────────────── */
+h1, h2, h3 {
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--text);
 }
-::-webkit-scrollbar-track {
+
+code, kbd {
+  font-family: var(--font-code);
+  font-size: 0.875em;
+}
+
+/* ── Sudoku Grid ──────────────────────────────────────── */
+.sudoku-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  border: 2px solid var(--border-box);
+  width: fit-content;
+}
+
+.sudoku-cell {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-right: 1px solid var(--border-grid);
+  border-bottom: 1px solid var(--border-grid);
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 1.125rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+/* Thick box separators */
+.sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
+  border-right: 2px solid var(--border-box);
+}
+.sudoku-cell:nth-child(n+19):nth-child(-n+27),
+.sudoku-cell:nth-child(n+46):nth-child(-n+54) {
+  border-bottom: 2px solid var(--border-box);
+}
+/* Remove outer borders (enclosing border on grid handles it) */
+.sudoku-cell:nth-child(9n) { border-right: none; }
+.sudoku-cell:nth-child(n+73) { border-bottom: none; }
+
+.sudoku-cell:hover { background: var(--bg-muted); }
+.sudoku-cell.selected { background: var(--selection-bg); outline: 2px solid var(--selection-border); outline-offset: -2px; z-index: 2; }
+.sudoku-cell.highlighted { background: #fef9c3; }
+.sudoku-cell.given { color: var(--text); }
+.sudoku-cell.solved { color: #1d4ed8; }
+.sudoku-cell.error { background: #fef2f2; color: #dc2626; }
+
+/* ── Utility classes ──────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn-primary:hover { background: #3f3f46; border-color: #3f3f46; }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { background: var(--border-strong); border-color: var(--border-strong); cursor: not-allowed; }
+
+.btn-outline {
   background: transparent;
+  color: var(--text);
+  border-color: var(--border);
 }
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+.btn-outline:hover { background: var(--bg-muted); border-color: var(--border-strong); }
+.btn-outline:active { transform: scale(0.98); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: transparent;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+.btn-ghost:hover { background: var(--bg-muted); color: var(--text); }
+
+/* ── Tag / Badge ──────────────────────────────────────── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
 }
 
-/* Smooth scroll */
-* {
-  scroll-behavior: smooth;
+/* ── Toggle switch ────────────────────────────────────── */
+.toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border-strong);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--text); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+/* ── Step playback ────────────────────────────────────── */
+.step-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.1s;
+  color: var(--text-muted);
+}
+.step-item:hover { background: var(--bg-muted); color: var(--text); }
+.step-item.active {
+  background: var(--bg-muted);
+  border-color: var(--border);
+  color: var(--text);
 }
 
-/* Prevent layout shift from number inputs */
-input[type="number"] {
-  -moz-appearance: textfield;
-}
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-/* Grid cell pulse animation */
-@keyframes cellPulse {
-  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.6); }
-  70% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+/* ── Constraint overlays ─────────────────────────────── */
+.cage-label {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--c-killer);
+  z-index: 5;
 }
 
-.cell-pulse {
-  animation: cellPulse 0.6s ease-out;
+/* ── Transitions ─────────────────────────────────────── */
+* { transition-property: none; }
+.btn, .toggle-slider, .toggle-slider::before, .step-item, .sudoku-cell {
+  transition-property: background, color, border-color, transform, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }
 
-/* Glassmorphism card */
-.glass {
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-}
+/* ── Spinner ─────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { animation: spin 0.8s linear infinite; }
 
-/* Gradient text utility */
-.gradient-text {
-  background: linear-gradient(135deg, #6366f1, #a855f7, #22d3ee);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
+/* ── Progress bar ────────────────────────────────────── */
+@keyframes grow-x { from { width: 0; } to { /* handled via JS */ } }
 
-/* Glow effect */
-.glow-indigo {
-  box-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
-}
-
-/* Scrollbar thin utility */
-.scrollbar-thin {
-  scrollbar-width: thin;
-}
+/* ── Fonts (Google Fonts via next/font handled in layout) */

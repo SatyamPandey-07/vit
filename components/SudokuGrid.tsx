@@ -1,370 +1,439 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { clsx } from "clsx";
 import {
   Grid as GridType,
   SolveStep,
   ConstraintSet,
-  KillerCage,
 } from "@/lib/solver/types";
 
-interface GridProps {
+// ── Constraint colour tokens (CSS vars) ─────────────────
+const C: Record<string, string> = {
+  classic:  "var(--c-classic)",
+  killer:   "var(--c-killer)",
+  thermo:   "var(--c-thermo)",
+  arrow:    "var(--c-arrow)",
+  kropki:   "var(--c-kropki)",
+  evenOdd:  "var(--c-evenodd)",
+  diagonal: "var(--c-diagonal)",
+};
+
+interface SudokuGridProps {
   grid: GridType;
-  solution: GridType | null;
-  currentStep: SolveStep | null;
-  constraints: ConstraintSet;
+  solution?: GridType | null;
+  currentStep?: SolveStep | null;
+  constraints?: ConstraintSet;
+  selectedCells?: Set<string>;
+  highlightedCells?: Set<string>;      // creator: multi-select
   onCellClick?: (r: number, c: number) => void;
-  editMode?: boolean;
+  onCellMouseEnter?: (r: number, c: number) => void;
+  cellSize?: number; // px, default 52
 }
 
-// Color mappings for constraint types
-const CONSTRAINT_PALETTE: Record<string, string> = {
-  classic: "rgba(99,102,241,0.25)",
-  killer: "rgba(245,158,11,0.25)",
-  thermo: "rgba(239,68,68,0.25)",
-  arrow: "rgba(34,211,238,0.25)",
-  kropki: "rgba(168,85,247,0.25)",
-  evenOdd: "rgba(16,185,129,0.25)",
-  diagonal: "rgba(249,115,22,0.25)",
-};
-
-const CONSTRAINT_BORDER: Record<string, string> = {
-  classic: "#6366f1",
-  killer: "#f59e0b",
-  thermo: "#ef4444",
-  arrow: "#22d3ee",
-  kropki: "#a855f7",
-  evenOdd: "#10b981",
-  diagonal: "#f97316",
-};
+const CELL = 52; // keep in sync with SVG calcs below
 
 export default function SudokuGrid({
   grid,
-  solution,
-  currentStep,
-  constraints,
+  solution = null,
+  currentStep = null,
+  constraints = {},
+  selectedCells = new Set(),
+  highlightedCells = new Set(),
   onCellClick,
-  editMode = false,
-}: GridProps) {
-  // Build cell highlight map from current step
-  const highlightMap = useMemo(() => {
-    const map = new Map<string, { bg: string; border: string }>();
-    if (!currentStep) return map;
-    const color = currentStep.highlight.color;
-    for (const [r, c] of currentStep.highlight.cells) {
-      map.set(`${r},${c}`, {
-        bg: `${color}33`,
-        border: color,
-      });
-    }
-    return map;
+  onCellMouseEnter,
+  cellSize = CELL,
+}: SudokuGridProps) {
+  // ── Build highlight map from step ──────────────────────
+  const stepHighlight = useMemo(() => {
+    if (!currentStep?.highlight.cells.length) return new Set<string>();
+    return new Set(currentStep.highlight.cells.map(([r, c]) => `${r},${c}`));
   }, [currentStep]);
 
-  // Build killer cage map: cell → { cage, color }
+  // ── Killer cage map ────────────────────────────────────
   const killerMap = useMemo(() => {
-    const map = new Map<string, { sum: number; isTopLeft: boolean; color: string }>();
-    if (!constraints.killer) return map;
-    const colors = ["#f59e0b", "#fb923c", "#facc15", "#a3e635", "#34d399"];
-    constraints.killer.forEach((cage, idx) => {
-      const color = colors[idx % colors.length];
-      // Find top-left cell
+    const m = new Map<string, { sum: number; isTopLeft: boolean }>();
+    if (!constraints.killer) return m;
+    for (const cage of constraints.killer) {
       let minR = 9, minC = 9;
       for (const [r, c] of cage.cells) {
         if (r < minR || (r === minR && c < minC)) { minR = r; minC = c; }
       }
       for (const [r, c] of cage.cells) {
-        map.set(`${r},${c}`, {
-          sum: cage.sum,
-          isTopLeft: r === minR && c === minC,
-          color,
-        });
+        m.set(`${r},${c}`, { sum: cage.sum, isTopLeft: r === minR && c === minC });
       }
-    });
-    return map;
+    }
+    return m;
   }, [constraints.killer]);
 
-  // Thermo cells set
-  const thermoSet = useMemo(() => {
-    const map = new Map<string, { order: number; total: number; thermoIdx: number }>();
-    if (!constraints.thermo) return map;
-    constraints.thermo.forEach((t, ti) => {
-      t.cells.forEach(([r, c], i) => {
-        map.set(`${r},${c}`, { order: i, total: t.cells.length, thermoIdx: ti });
-      });
-    });
-    return map;
-  }, [constraints.thermo]);
-
-  // Even/Odd set
+  // ── Even/odd map ───────────────────────────────────────
   const evenOddMap = useMemo(() => {
-    const map = new Map<string, "even" | "odd">();
-    if (!constraints.evenOdd) return map;
-    for (const { cell: [r, c], parity } of constraints.evenOdd) {
-      map.set(`${r},${c}`, parity);
-    }
-    return map;
+    const m = new Map<string, "even" | "odd">();
+    if (!constraints.evenOdd) return m;
+    for (const { cell: [r, c], parity } of constraints.evenOdd) m.set(`${r},${c}`, parity);
+    return m;
   }, [constraints.evenOdd]);
 
-  // Diagonal cells
+  // ── Diagonal set ───────────────────────────────────────
   const diagSet = useMemo(() => {
     const s = new Set<string>();
     if (!constraints.diagonal) return s;
     for (const { direction } of constraints.diagonal) {
-      for (let i = 0; i < 9; i++) {
-        if (direction === "main") s.add(`${i},${i}`);
-        else s.add(`${i},${8 - i}`);
-      }
+      for (let i = 0; i < 9; i++)
+        s.add(direction === "main" ? `${i},${i}` : `${i},${8 - i}`);
     }
     return s;
   }, [constraints.diagonal]);
 
-  // Kropki dots map: key = "r1,c1-r2,c2"
-  const kropkiMap = useMemo(() => {
-    const map = new Map<string, "black" | "white">();
-    if (!constraints.kropki) return map;
-    for (const { cells: [[r1, c1], [r2, c2]], type } of constraints.kropki) {
-      map.set(`${r1},${c1}-${r2},${c2}`, type);
-      map.set(`${r2},${c2}-${r1},${c1}`, type);
+  // ── Thermo set ────────────────────────────────────────
+  const thermoSet = useMemo(() => {
+    const m = new Map<string, { order: number; total: number }>();
+    if (!constraints.thermo) return m;
+    for (const t of constraints.thermo) {
+      t.cells.forEach(([r, c], i) =>
+        m.set(`${r},${c}`, { order: i, total: t.cells.length })
+      );
     }
-    return map;
+    return m;
+  }, [constraints.thermo]);
+
+  // ── Kropki map (for dots between cells) ───────────────
+  const kropkiMap = useMemo(() => {
+    const m = new Map<string, "black" | "white">();
+    if (!constraints.kropki) return m;
+    for (const { cells: [[r1, c1], [r2, c2]], type } of constraints.kropki) {
+      m.set(`${r1},${c1}-${r2},${c2}`, type);
+      m.set(`${r2},${c2}-${r1},${c1}`, type);
+    }
+    return m;
   }, [constraints.kropki]);
 
   function getCellValue(r: number, c: number): number | null {
-    if (grid[r][c] != null) return grid[r][c];
-    if (solution) return solution[r][c];
+    if (grid[r]?.[c] != null) return grid[r][c];
+    if (solution?.[r]?.[c] != null) return solution[r][c];
     return null;
   }
 
-  function isGiven(r: number, c: number): boolean {
-    return grid[r][c] != null;
-  }
+  // ── Killer cage border computation ────────────────────
+  // We draw dashed outlines on cage edges (cells that border outside-cage cells)
+  const cageEdgeMap = useMemo(() => {
+    if (!constraints.killer) return new Map<string, { top: boolean; right: boolean; bottom: boolean; left: boolean }>();
+    const cageId = new Map<string, number>();
+    constraints.killer.forEach((cage, idx) => {
+      for (const [r, c] of cage.cells) cageId.set(`${r},${c}`, idx);
+    });
+    const edgeMap = new Map<string, { top: boolean; right: boolean; bottom: boolean; left: boolean }>();
+    for (const [key, idx] of cageId) {
+      const [r, c] = key.split(",").map(Number);
+      edgeMap.set(key, {
+        top:    cageId.get(`${r - 1},${c}`) !== idx,
+        right:  cageId.get(`${r},${c + 1}`) !== idx,
+        bottom: cageId.get(`${r + 1},${c}`) !== idx,
+        left:   cageId.get(`${r},${c - 1}`) !== idx,
+      });
+    }
+    return edgeMap;
+  }, [constraints.killer]);
 
-  function isSolved(r: number, c: number): boolean {
-    return grid[r][c] == null && solution != null && solution[r][c] != null;
-  }
+  const cells = Array.from({ length: 81 }, (_, idx) => {
+    const r = Math.floor(idx / 9);
+    const c = idx % 9;
+    const key = `${r},${c}`;
+    const val = getCellValue(r, c);
+    const isGiven = grid[r]?.[c] != null;
+    const isSolved = !isGiven && solution?.[r]?.[c] != null;
+    const isSelected = selectedCells.has(key);
+    const isHighlighted = highlightedCells.has(key);
+    const isStepHighlight = stepHighlight.has(key);
+    const isDiag = diagSet.has(key);
+    const killer = killerMap.get(key);
+    const killerEdge = cageEdgeMap.get(key);
+    const thermo = thermoSet.get(key);
+    const eo = evenOddMap.get(key);
 
-  return (
-    <div className="relative select-none">
-      {/* Diagonal overlay */}
-      {diagSet.size > 0 && (
-        <div className="absolute inset-0 pointer-events-none z-0">
-          {/* Visual diagonal tint rendered via cells */}
-        </div>
-      )}
+    // Border: thick on box boundaries
+    const borderRight = (c + 1) % 3 === 0 && c !== 8
+      ? "2px solid var(--border-box)" : "1px solid var(--border-grid)";
+    const borderBottom = (r + 1) % 3 === 0 && r !== 8
+      ? "2px solid var(--border-box)" : "1px solid var(--border-grid)";
+    const borderLeft  = c === 0 ? "none" : undefined;
+    const borderTop   = r === 0 ? "none" : undefined;
 
+    // Background
+    let bg = "var(--bg)";
+    if (isDiag) bg = "#fafafa";
+    if (isHighlighted) bg = "#fef9c3";
+    if (isStepHighlight) bg = "#dbeafe";
+    if (isSelected) bg = "#e0e7ff";
+
+    // Cage dashed edge shadows (inset box-shadow trick)
+    const cageShadows: string[] = [];
+    if (killerEdge) {
+      const dash = "inset 0 0 0 0 transparent"; // placeholder
+      if (killerEdge.top)    cageShadows.push("inset 0  2px 0 0 " + C.killer);
+      if (killerEdge.right)  cageShadows.push("inset -2px 0 0 0 " + C.killer);
+      if (killerEdge.bottom) cageShadows.push("inset 0 -2px 0 0 " + C.killer);
+      if (killerEdge.left)   cageShadows.push("inset 2px 0 0 0 " + C.killer);
+    }
+
+    return (
       <div
-        className="grid gap-0 border-2 border-slate-300/60 rounded-xl overflow-hidden shadow-2xl"
-        style={{ gridTemplateColumns: "repeat(9, 1fr)" }}
+        key={key}
+        data-cell={key}
+        onClick={() => onCellClick?.(r, c)}
+        onMouseEnter={() => onCellMouseEnter?.(r, c)}
+        style={{
+          width: cellSize,
+          height: cellSize,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          borderRight: c === 8 ? "none" : borderRight,
+          borderBottom: r === 8 ? "none" : borderBottom,
+          borderLeft,
+          borderTop,
+          background: bg,
+          cursor: onCellClick ? "pointer" : "default",
+          boxShadow: cageShadows.length ? cageShadows.join(", ") : undefined,
+          transition: "background 0.1s",
+          zIndex: isSelected || isStepHighlight ? 2 : 1,
+        }}
       >
-        {Array.from({ length: 9 }, (_, r) =>
-          Array.from({ length: 9 }, (_, c) => {
-            const key = `${r},${c}`;
-            const highlight = highlightMap.get(key);
-            const killer = killerMap.get(key);
-            const thermo = thermoSet.get(key);
-            const evenOdd = evenOddMap.get(key);
-            const isDiag = diagSet.has(key);
-            const val = getCellValue(r, c);
-            const given = isGiven(r, c);
-            const solved = isSolved(r, c);
+        {/* Diagonal tint */}
+        {isDiag && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.025)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
 
-            // Borders: thick on box boundaries
-            const borderRight = (c + 1) % 3 === 0 && c !== 8 ? "border-r-2 border-r-slate-400/80" : "border-r border-r-slate-600/30";
-            const borderBottom = (r + 1) % 3 === 0 && r !== 8 ? "border-b-2 border-b-slate-400/80" : "border-b border-b-slate-600/30";
+        {/* Even/odd indicator (small corner shape) */}
+        {eo && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 3,
+              right: 3,
+              width: 7,
+              height: 7,
+              borderRadius: eo === "even" ? "50%" : 0,
+              background: C.evenOdd,
+              opacity: 0.5,
+            }}
+          />
+        )}
 
-            return (
-              <div
-                key={key}
-                className={clsx(
-                  "relative flex items-center justify-center",
-                  "w-12 h-12 md:w-14 md:h-14 text-lg font-bold",
-                  "transition-all duration-200 cursor-pointer",
-                  borderRight, borderBottom,
-                  editMode && !given && "hover:bg-indigo-500/10",
-                  isDiag && !highlight && "bg-orange-500/8",
-                )}
-                style={{
-                  backgroundColor: highlight?.bg ?? (isDiag ? "rgba(249,115,22,0.06)" : undefined),
-                  boxShadow: highlight ? `inset 0 0 0 2px ${highlight.border}` : undefined,
-                  ...(killer && !highlight ? {
-                    boxShadow: `inset 0 0 0 1.5px ${killer.color}88`,
-                    backgroundColor: `${killer.color}11`,
-                  } : {}),
-                }}
-                onClick={() => onCellClick?.(r, c)}
-              >
-                {/* Diagonal tint */}
-                {isDiag && (
-                  <div className="absolute inset-0 bg-orange-400/6 pointer-events-none" />
-                )}
+        {/* Killer sum label */}
+        {killer?.isTopLeft && (
+          <span
+            style={{
+              position: "absolute",
+              top: 2,
+              left: 3,
+              fontSize: 9,
+              fontWeight: 700,
+              lineHeight: 1,
+              color: C.killer,
+              zIndex: 5,
+            }}
+          >
+            {killer.sum}
+          </span>
+        )}
 
-                {/* Even/Odd shape */}
-                {evenOdd && !val && (
-                  <div
-                    className={clsx(
-                      "absolute inset-1.5 opacity-20",
-                      evenOdd === "even" ? "rounded-full bg-emerald-400" : "bg-emerald-400"
-                    )}
-                  />
-                )}
+        {/* Thermo bulb at position 0 */}
+        {thermo?.order === 0 && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 6,
+              borderRadius: "50%",
+              border: `2px solid ${C.thermo}`,
+              opacity: 0.5,
+              pointerEvents: "none",
+            }}
+          />
+        )}
 
-                {/* Thermo bulb/stem */}
-                {thermo && (
-                  <div
-                    className={clsx("absolute inset-0 pointer-events-none flex items-center justify-center")}
-                  >
-                    {thermo.order === 0 ? (
-                      <div className="w-8 h-8 rounded-full border-2 border-red-400/60 bg-red-400/10" />
-                    ) : (
-                      <div className="w-2 h-2 rounded-full bg-red-400/40" />
-                    )}
-                  </div>
-                )}
-
-                {/* Killer sum label */}
-                {killer?.isTopLeft && (
-                  <span
-                    className="absolute top-0.5 left-0.5 text-[9px] font-bold leading-none z-10"
-                    style={{ color: killer.color }}
-                  >
-                    {killer.sum}
-                  </span>
-                )}
-
-                {/* Cell value */}
-                {val != null ? (
-                  <span
-                    className={clsx(
-                      "z-10 transition-all duration-300",
-                      given
-                        ? "text-white font-black"
-                        : solved
-                        ? "text-indigo-400 font-semibold"
-                        : "text-slate-400",
-                      currentStep?.type === "value_fixed" &&
-                        currentStep.cells.some(([cr, cc]) => cr === r && cc === c)
-                        ? "scale-110 text-emerald-400"
-                        : ""
-                    )}
-                  >
-                    {val}
-                  </span>
-                ) : null}
-              </div>
-            );
-          })
+        {/* Cell value */}
+        {val != null && (
+          <span
+            style={{
+              fontSize: cellSize >= 52 ? "1.125rem" : "0.875rem",
+              fontWeight: isGiven ? 700 : 500,
+              color: isGiven
+                ? "var(--text)"
+                : isSolved
+                ? "#1d4ed8"
+                : "var(--text-muted)",
+              zIndex: 3,
+              position: "relative",
+            }}
+          >
+            {val}
+          </span>
         )}
       </div>
+    );
+  });
 
-      {/* Kropki dots overlay - SVG */}
-      <KropkiOverlay kropkiMap={kropkiMap} />
+  return (
+    <div style={{ position: "relative", width: "fit-content" }}>
+      {/* Main grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(9, ${cellSize}px)`,
+          border: "2px solid var(--border-box)",
+          width: "fit-content",
+          background: "var(--bg)",
+        }}
+      >
+        {cells}
+      </div>
 
-      {/* Thermo lines overlay */}
-      {constraints.thermo && constraints.thermo.length > 0 && (
-        <ThermoOverlay thermos={constraints.thermo} />
-      )}
+      {/* SVG overlay for thermo lines, arrows, kropki dots */}
+      <SvgOverlay
+        constraints={constraints}
+        cellSize={cellSize}
+        stepHighlight={stepHighlight}
+        currentStep={currentStep}
+      />
     </div>
   );
 }
 
-// ─── Thermo line overlay ───────────────────────────────────────
-function ThermoOverlay({
-  thermos,
+// ── SVG Overlay ───────────────────────────────────────────
+function SvgOverlay({
+  constraints,
+  cellSize,
+  stepHighlight,
+  currentStep,
 }: {
-  thermos: Array<{ cells: [number, number][] }>;
+  constraints: ConstraintSet;
+  cellSize: number;
+  stepHighlight: Set<string>;
+  currentStep?: SolveStep | null;
 }) {
-  const CELL = 56; // px per cell (md size)
-  const OFFSET = 28; // center of cell
+  const W = 9 * cellSize;
+  const half = cellSize / 2;
+
+  const cx = (c: number) => c * cellSize + half;
+  const cy = (r: number) => r * cellSize + half;
+
+  const thermos = constraints.thermo ?? [];
+  const arrows = constraints.arrow ?? [];
+  const kropki = constraints.kropki ?? [];
+
+  if (!thermos.length && !arrows.length && !kropki.length) return null;
+
+  // Deduplicate kropki dots
+  const renderedDots = new Set<string>();
+  const dotElements: React.ReactNode[] = [];
+  for (const { cells: [[r1, c1], [r2, c2]], type } of kropki) {
+    const key = [[r1, c1], [r2, c2]].map(([a, b]) => `${a},${b}`).sort().join("|");
+    if (renderedDots.has(key)) continue;
+    renderedDots.add(key);
+    const x = (cx(c1) + cx(c2)) / 2;
+    const y = (cy(r1) + cy(r2)) / 2;
+    dotElements.push(
+      <g key={key}>
+        <circle cx={x} cy={y} r={5} fill={type === "black" ? "var(--text)" : "white"} stroke="var(--text)" strokeWidth={1.5} />
+      </g>
+    );
+  }
 
   return (
     <svg
-      className="absolute inset-0 pointer-events-none z-20"
-      style={{ width: "100%", height: "100%" }}
-      viewBox={`0 0 ${9 * CELL} ${9 * CELL}`}
+      style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 20 }}
+      width={W}
+      height={W}
+      viewBox={`0 0 ${W} ${W}`}
     >
-      <defs>
-        <linearGradient id="thermo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.7" />
-          <stop offset="100%" stopColor="#f97316" stopOpacity="0.7" />
-        </linearGradient>
-      </defs>
+      {/* Thermo lines */}
       {thermos.map((t, ti) => (
-        <g key={ti}>
-          {/* Bulb */}
+        <g key={`thermo-${ti}`}>
+          {/* Bulb circle */}
           <circle
-            cx={t.cells[0][1] * CELL + OFFSET}
-            cy={t.cells[0][0] * CELL + OFFSET}
-            r={16}
+            cx={cx(t.cells[0][1])}
+            cy={cy(t.cells[0][0])}
+            r={cellSize * 0.28}
             fill="none"
-            stroke="url(#thermo-grad)"
-            strokeWidth={3}
+            stroke={C.thermo}
+            strokeWidth={2}
             opacity={0.6}
           />
-          {/* Line */}
-          {t.cells.slice(0, -1).map((cell, i) => (
+          {/* Stem line */}
+          {t.cells.slice(0, -1).map(([r, c], i) => (
             <line
               key={i}
-              x1={cell[1] * CELL + OFFSET}
-              y1={cell[0] * CELL + OFFSET}
-              x2={t.cells[i + 1][1] * CELL + OFFSET}
-              y2={t.cells[i + 1][0] * CELL + OFFSET}
-              stroke="url(#thermo-grad)"
-              strokeWidth={6}
+              x1={cx(c)} y1={cy(r)}
+              x2={cx(t.cells[i + 1][1])} y2={cy(t.cells[i + 1][0])}
+              stroke={C.thermo}
+              strokeWidth={4}
               strokeLinecap="round"
-              opacity={0.5}
+              opacity={0.35}
             />
           ))}
         </g>
       ))}
-    </svg>
-  );
-}
 
-// ─── Kropki dot overlay ────────────────────────────────────────
-function KropkiOverlay({
-  kropkiMap,
-}: {
-  kropkiMap: Map<string, "black" | "white">;
-}) {
-  const CELL = 56;
-  const OFFSET = 28;
-  const rendered = new Set<string>();
-  const dots: React.ReactNode[] = [];
+      {/* Arrow constraints */}
+      {arrows.map((a, ai) => {
+        const [cr, cc] = a.circle;
+        const path = a.arrow;
+        return (
+          <g key={`arrow-${ai}`}>
+            {/* Circle indicator */}
+            <circle
+              cx={cx(cc)} cy={cy(cr)}
+              r={cellSize * 0.35}
+              fill="none"
+              stroke={C.arrow}
+              strokeWidth={1.5}
+              opacity={0.7}
+            />
+            {/* Arrow line */}
+            {path.slice(0, -1).map(([r, c], i) => (
+              <line
+                key={i}
+                x1={cx(c)} y1={cy(r)}
+                x2={cx(path[i + 1][1])} y2={cy(path[i + 1][0])}
+                stroke={C.arrow}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                opacity={0.6}
+              />
+            ))}
+            {/* Arrowhead */}
+            {path.length >= 1 && (() => {
+              const [lr, lc] = path[path.length - 1];
+              const [pr, pc] = path.length > 1 ? path[path.length - 2] : [cr, cc];
+              const angle = Math.atan2(cy(lr) - cy(pr), cx(lc) - cx(pc));
+              const ax = cx(lc) - Math.cos(angle) * 4;
+              const ay = cy(lr) - Math.sin(angle) * 4;
+              return (
+                <polygon
+                  points={`
+                    ${cx(lc)},${cy(lr)}
+                    ${ax - Math.sin(angle) * 4},${ay + Math.cos(angle) * 4}
+                    ${ax + Math.sin(angle) * 4},${ay - Math.cos(angle) * 4}
+                  `}
+                  fill={C.arrow}
+                  opacity={0.7}
+                />
+              );
+            })()}
+          </g>
+        );
+      })}
 
-  for (const [key, type] of kropkiMap.entries()) {
-    const [a, b] = key.split("-");
-    const canonical = [a, b].sort().join("-");
-    if (rendered.has(canonical)) continue;
-    rendered.add(canonical);
-
-    const [r1, c1] = a.split(",").map(Number);
-    const [r2, c2] = b.split(",").map(Number);
-    const x = ((c1 + c2) / 2) * CELL + OFFSET;
-    const y = ((r1 + r2) / 2) * CELL + OFFSET;
-
-    dots.push(
-      <circle
-        key={canonical}
-        cx={x}
-        cy={y}
-        r={6}
-        fill={type === "black" ? "#1e1b4b" : "white"}
-        stroke={type === "black" ? "#a855f7" : "#a855f7"}
-        strokeWidth={2}
-      />
-    );
-  }
-
-  if (dots.length === 0) return null;
-
-  return (
-    <svg
-      className="absolute inset-0 pointer-events-none z-30"
-      style={{ width: "100%", height: "100%" }}
-      viewBox={`0 0 ${9 * CELL} ${9 * CELL}`}
-    >
-      {dots}
+      {/* Kropki dots */}
+      {dotElements}
     </svg>
   );
 }
