@@ -133,8 +133,19 @@ function propagateUnits(cands: Candidates, steps: SolveStep[]): boolean {
   while (changed) {
     changed = false;
     for (const unit of ALL_UNITS) {
-      // Naked singles propagation
+      // Check for empty cells or empty units (missing a value)
+      for (let val=1; val<=9; val++) {
+        const positions = unit.filter(([r,c])=>cands[r][c].has(val));
+        if (positions.length === 0) {
+          // Failure: value 'val' has no possible cells in this unit
+          console.log(`[Contradiction] Value ${val} has no positions in unit ${unit[0][0]},${unit[0][1]}...`);
+          cands[unit[0][0]][unit[0][1]].clear();
+          return true;
+        }
+      }
+
       for (const [r,c] of unit) {
+        if (cands[r][c].size === 0) return true; 
         if (cands[r][c].size !== 1) continue;
         const val = [...cands[r][c]][0];
         const removed: CandidateChange[] = [];
@@ -146,12 +157,13 @@ function propagateUnits(cands: Candidates, steps: SolveStep[]): boolean {
           }
         }
         if (removed.length>0) {
-          const isRow = unit===ROWS[r];
-          const isCol = unit===COLS[c];
-          const unitName = isRow?`Row ${r+1}`:isCol?`Col ${c+1}`:`Box`;
+          const isRow = ROWS.some(row => row === unit);
+          const isCol = COLS.some(col => col === unit);
+          const unitIdx = isRow ? ROWS.indexOf(unit) : isCol ? COLS.indexOf(unit) : -1;
+          const unitName = isRow?`Row ${unitIdx+1}`:isCol?`Col ${unitIdx+1}`:`Box`;
           steps.push(makeStep(
             "naked_single","classic",
-            `${unitName}: x${r+1}${c+1} = ${val} → peers cannot be ${val}`,
+            `${unitName}: x${r+1}${c+1} = ${val} → peers must not be ${val}`,
             removed.map(ch=>ch.cell),
             removed,
             `Cell (${r+1},${c+1}) is fixed to ${val}; removed from ${removed.length} peer(s) in ${unitName}`,
@@ -159,15 +171,18 @@ function propagateUnits(cands: Candidates, steps: SolveStep[]): boolean {
           ));
         }
       }
-      // Hidden singles: value appears exactly once in unit
+      // Hidden singles
       for (let val=1; val<=9; val++) {
         const positions = unit.filter(([r,c])=>cands[r][c].has(val));
         if (positions.length!==1) continue;
         const [r,c]=positions[0];
-        if (cands[r][c].size===1) continue; // already naked single
+        if (cands[r][c].size===1) continue;
         const removed_vals=[...cands[r][c]].filter(v=>v!==val);
         for (const v of removed_vals) cands[r][c].delete(v);
-        const unitName = ROWS.includes(unit)?`Row ${r+1}`:COLS.includes(unit)?`Col ${c+1}`:`Box`;
+        const isRow = ROWS.some(row => row === unit);
+        const isCol = COLS.some(col => col === unit);
+        const unitIdx = isRow ? ROWS.indexOf(unit) : isCol ? COLS.indexOf(unit) : -1;
+        const unitName = isRow?`Row ${unitIdx+1}`:isCol?`Col ${unitIdx+1}`:`Box`;
         steps.push(makeStep(
           "hidden_single","classic",
           `${unitName}: only cell (${r+1},${c+1}) can be ${val}`,
@@ -205,6 +220,18 @@ function propagateEvenOdd(cands: Candidates, cs: ConstraintSet, steps: SolveStep
     anyChange=true;
   }
   return anyChange;
+}
+
+// ── group variant changes ──
+function makeBulkStep(
+  action: StepAction,
+  constraint_type: ConstraintKind,
+  equation: string,
+  changes: CandidateChange[],
+  reason: string,
+  cands: Candidates
+): SolveStep {
+  return makeStep(action, constraint_type, equation, changes.map(c=>c.cell), changes, reason, cands);
 }
 
 /**
@@ -264,32 +291,78 @@ function propagateKiller(cands: Candidates, cs: ConstraintSet, steps: SolveStep[
     const label=cells.map(([r,c])=>`x${r+1}${c+1}`).join("+");
     const eq=`${label} = ${sum} (cage sum, all distinct)`;
 
-    // Get current candidates per cell in cage
-    const domPerCell=cells.map(([r,c])=>[...cands[r][c]]);
+    // Filter combos by current domains using backtracking matching
+    const baseCombos = killerCombos(n, sum);
+    const validCombos = baseCombos.filter(combo => {
+      const used = new Array(n).fill(false);
+      function canAssign(idx: number): boolean {
+        if (idx === n) return true;
+        for (let i = 0; i < n; i++) {
+          if (!used[i] && cands[cells[i][0]][cells[i][1]].has(combo[idx])) {
+            used[i] = true;
+            if (canAssign(idx + 1)) return true;
+            used[i] = false;
+          }
+        }
+        return false;
+      }
+      return canAssign(0);
+    });
+
+    if (validCombos.length === 0) {
+      // Cage is impossible given current domains. Clear a cell to signal UNSAT.
+      const [cr, cc] = cells[0];
+      if (cands[cr][cc].size > 0) {
+        cands[cr][cc].clear();
+        return true;
+      }
+      return false;
+    }
+
+    // For each cell, allowed values = union of all digits from valid combos that can sit in this cell
+    const allowedPerCell = Array.from({ length: n }, () => new Set<number>());
+    for (const combo of validCombos) {
+      // Find all possible assignments of this combo to cells
+      const used = new Array(n).fill(false);
+      const memo = new Map<string, boolean>();
+      function collectAssignments(idx: number): boolean {
+        if (idx === n) return true;
+        const key = `${idx}:${used.map(b=>b?'1':'0').join('')}`;
+        if (memo.has(key)) return memo.get(key)!;
+        
+        let foundAny = false;
+        for (let i = 0; i < n; i++) {
+          if (!used[i] && cands[cells[i][0]][cells[i][1]].has(combo[idx])) {
+            used[i] = true;
+            if (collectAssignments(idx + 1)) {
+              allowedPerCell[i].add(combo[idx]); // combo[idx] is possible for cell i
+              foundAny = true;
+            }
+            used[i] = false;
+          }
+        }
+        memo.set(key, foundAny);
+        return foundAny;
+      }
+      collectAssignments(0);
+    }
     
-    // Find valid combos given current domains
-    const allCombos=killerCombos(n,sum);
-    const validCombos=allCombos.filter(combo=>
-      combo.every((v,i)=>domPerCell[i].includes(v))
-    );
-    
-    if (validCombos.length===0) continue; // will be caught by backtrack
-    
-    // For each cell, allowed values = union over valid combos at position i
-    for (let i=0;i<n;i++) {
-      const [r,c]=cells[i];
-      const allowed=new Set(validCombos.map(combo=>combo[i]));
-      const removed_vals=[...cands[r][c]].filter(v=>!allowed.has(v));
-      if (!removed_vals.length) continue;
+    const killerChanges: CandidateChange[] = [];
+    for (let i = 0; i < n; i++) {
+      const [r, c] = cells[i];
+      const removed_vals = [...cands[r][c]].filter(v => !allowedPerCell[i].has(v));
+      if (removed_vals.length === 0) continue;
       for (const v of removed_vals) cands[r][c].delete(v);
-      steps.push(makeStep(
-        "candidate_eliminated","killer",eq,[[r,c]],
-        [{cell:[r,c],removed:removed_vals,remaining:[...cands[r][c]].sort((a,b)=>a-b)}],
-        `Valid cage combos restrict cell (${r+1},${c+1}) — removed {${removed_vals.join(",")}}`,cands));
-      anyChange=true;
+      killerChanges.push({ cell: [r, c], removed: removed_vals, remaining: [...cands[r][c]].sort((a, b) => a - b) });
+      anyChange = true;
+    }
+    if (killerChanges.length > 0) {
+      steps.push(makeBulkStep("candidate_eliminated", "killer", eq, killerChanges,
+        `Killer combos restrict cage cells — removed candidates from ${killerChanges.length} cell(s)`, cands));
     }
 
     // Also: if a value is fixed in a cage cell, remove from other cage cells
+    const fixedChanges: CandidateChange[] = [];
     for (let i=0;i<n;i++) {
       if (cands[cells[i][0]][cells[i][1]].size!==1) continue;
       const val=[...cands[cells[i][0]][cells[i][1]]][0];
@@ -297,12 +370,13 @@ function propagateKiller(cands: Candidates, cs: ConstraintSet, steps: SolveStep[
         if (i===j) continue;
         const [r,c]=cells[j];
         if (!remove(cands,r,c,val)) continue;
-        steps.push(makeStep(
-          "constraint_applied","killer",eq,[[r,c]],
-          [{cell:[r,c],removed:[val],remaining:[...cands[r][c]].sort((a,b)=>a-b)}],
-          `Cage: ${val} used at (${cells[i][0]+1},${cells[i][1]+1}) → removed from (${r+1},${c+1})`,cands));
+        fixedChanges.push({cell:[r,c],removed:[val],remaining:[...cands[r][c]].sort((a,b)=>a-b)});
         anyChange=true;
       }
+    }
+    if (fixedChanges.length > 0) {
+      steps.push(makeBulkStep("constraint_applied", "killer", eq, fixedChanges,
+        `Cage: fixed value removed from peers in cage`, cands));
     }
   }
   return anyChange;
@@ -377,6 +451,7 @@ function propagateArrow(cands: Candidates, cs: ConstraintSet, steps: SolveStep[]
       anyChange=true;
     }
     
+    const arrowChanges: CandidateChange[] = [];
     const circleMin=Math.min(...cands[cr][cc]);
     const circleMax=Math.max(...cands[cr][cc]);
     
@@ -385,15 +460,19 @@ function propagateArrow(cands: Candidates, cs: ConstraintSet, steps: SolveStep[]
       const [r,c]=path[i];
       const othersMin=path.reduce((s,[pr,pc],j)=>j!==i?s+Math.min(...cands[pr][pc]):s,0);
       const othersMax=path.reduce((s,[pr,pc],j)=>j!==i?s+Math.max(...cands[pr][pc]):s,0);
+      
       const cellMin=Math.max(1,circleMin-othersMax);
       const cellMax=Math.min(9,circleMax-othersMin);
+      
       const removed_vals=[...cands[r][c]].filter(v=>v<cellMin||v>cellMax);
       if (!removed_vals.length) continue;
       for (const v of removed_vals) cands[r][c].delete(v);
-      steps.push(makeStep("candidate_eliminated","arrow",eq,[[r,c]],
-        [{cell:[r,c],removed:removed_vals,remaining:[...cands[r][c]].sort((a,b)=>a-b)}],
-        `Arrow cell a${i+1} restricted to [${cellMin}..${cellMax}] → removed {${removed_vals.join(",")}}`,cands));
+      arrowChanges.push({cell:[r,c],removed:removed_vals,remaining:[...cands[r][c]].sort((a,b)=>a-b)});
       anyChange=true;
+    }
+    if (arrowChanges.length > 0) {
+      steps.push(makeBulkStep("candidate_eliminated", "arrow", eq, arrowChanges,
+        `Arrow sum range restricts arrow cells`, cands));
     }
   }
   return anyChange;
@@ -463,6 +542,8 @@ function propagateAll(cands: Candidates, cs: ConstraintSet, steps: SolveStep[]):
   let anyChange=true, totalChange=false;
   while(anyChange){
     anyChange=false;
+    if (!isValid(cands, cs)) break; // Stop if we hit a contradiction
+
     if(propagateEvenOdd(cands,cs,steps)) anyChange=true;
     if(propagateDiagonal(cands,cs,steps)) anyChange=true;
     if(propagateKiller(cands,cs,steps)) anyChange=true;
@@ -470,6 +551,7 @@ function propagateAll(cands: Candidates, cs: ConstraintSet, steps: SolveStep[]):
     if(propagateArrow(cands,cs,steps)) anyChange=true;
     if(propagateKropki(cands,cs,steps)) anyChange=true;
     if(propagateUnits(cands,steps)) anyChange=true;
+    
     if(anyChange) totalChange=true;
   }
   return totalChange;
@@ -528,19 +610,16 @@ function backtrack(
 // ═══════════════════════════════════════════════════════════
 function countSolutions(cands: Candidates, cs: ConstraintSet, max = 2): number {
   if(!isValid(cands,cs)) return 0;
-  propagateAll(cloneCands(cands),cs,[]);
-  // Re-propagate on a clean clone
-  const wk=cloneCands(cands);
-  propagateAll(wk,cs,[]);
-  if(!isValid(wk,cs)) return 0;
-  if(isSolved(wk)) return 1;
+  propagateAll(cands,cs,[]);
+  if(!isValid(cands,cs)) return 0;
+  if(isSolved(cands)) return 1;
   
-  const cell=pickCell(wk);
+  const cell=pickCell(cands);
   if(!cell) return 0;
   const [r,c]=cell;
   let count=0;
-  for(const val of wk[r][c]) {
-    const branch=cloneCands(wk);
+  for(const val of cands[r][c]) {
+    const branch=cloneCands(cands);
     branch[r][c]=new Set([val]);
     count+=countSolutions(branch,cs,max);
     if(count>=max) break;
@@ -571,22 +650,8 @@ export function solve(grid: Grid, constraints: ConstraintSet): SolveResponse {
       "Initialize: 81 variables x_{r,c} ∈ {1..9}, 27 unit-distinct constraints",
       [],[],"Solver started — applying constraint propagation before search",cands));
 
-    // Phase 1: Constraint propagation
-    propagateAll(cands,constraints,steps);
-
-    if (!isValid(cands,constraints)){
-      steps.push(makeStep("solving_complete","classic","UNSATISFIABLE",[],[],
-        "Puzzle has no valid solution",cands));
-      return {solution:null,steps,unique:false,error:"No solution exists",solveTimeMs:Date.now()-startMs};
-    }
-
-    // Phase 2: Backtracking (only if not already solved)
-    let solution: Grid|null=null;
-    if(isSolved(cands)){
-      solution=toGrid(cands);
-    } else {
-      solution=backtrack(cloneCands(cands),constraints,steps,0);
-    }
+    // Start solver via backtrack(depth=0), which triggers initial propagation.
+    let solution=backtrack(cloneCands(cands),constraints,steps,0);
 
     if (!solution) {
       steps.push(makeStep("solving_complete","classic","UNSATISFIABLE",[],[],
