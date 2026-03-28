@@ -13,47 +13,30 @@ const TAG_COLORS: Record<string, string> = {
   kropki:   "var(--c-kropki)",
 };
 
-export default function PuzzleSelector({
-  activeId,
-  onSelect,
-}: {
+export default function PuzzleSelector({ activeId, onSelect }: {
   activeId: string | null;
   onSelect: (p: PuzzlePreset) => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <p style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 4 }}>
-        Presets
-      </p>
+    <>
       {PUZZLES.map(p => {
         const active = p.id === activeId;
         return (
           <button
             key={p.id}
             onClick={() => onSelect(p)}
-            style={{
-              textAlign: "left",
-              padding: "10px 12px",
-              borderRadius: 7,
-              border: active ? "1.5px solid var(--text)" : "1px solid var(--border)",
-              background: active ? "var(--bg-muted)" : "var(--bg)",
-              cursor: "pointer",
-              transition: "all 0.15s",
-            }}
+            className={`puzzle-item${active ? " active" : ""}`}
+            style={{ border: active ? "1.5px solid var(--text)" : "1px solid var(--border)", background: active ? "var(--bg-muted)" : "var(--bg)" }}
           >
-            <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>
+            <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {p.name}
             </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: 6, lineHeight: 1.4 }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: 1.35, marginBottom: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
               {p.description}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {p.tags.map(t => (
-                <span
-                  key={t}
-                  className="tag"
-                  style={{ color: TAG_COLORS[t] ?? "var(--text-muted)", borderColor: `color-mix(in srgb, ${TAG_COLORS[t] ?? "#71717a"} 25%, transparent)` }}
-                >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+              {p.tags.filter(t => t !== "classic").map(t => (
+                <span key={t} className="tag" style={{ fontSize: "0.6rem", padding: "1px 5px", color: TAG_COLORS[t] ?? "var(--text-muted)" }}>
                   {t}
                 </span>
               ))}
@@ -61,6 +44,6 @@ export default function PuzzleSelector({
           </button>
         );
       })}
-    </div>
+    </>
   );
 }

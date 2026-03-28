@@ -7,21 +7,44 @@ import PuzzleSelector from "@/components/PuzzleSelector";
 import { SolveStep, Grid, ConstraintSet, SolveResponse } from "@/lib/solver/types";
 import { PUZZLES, PuzzlePreset } from "@/lib/puzzles";
 
+// ── Responsive layout hook ─────────────────────────────
+function useLayout() {
+  const [w, setW] = useState(1280);
+  useEffect(() => {
+    const update = () => setW(window.innerWidth);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  const isMobile  = w < 640;
+  const isTablet  = w >= 640 && w < 900;
+  const isDesktop = w >= 900;
+
+  // Dynamic cell size based on available space
+  const cellSize = isMobile
+    ? Math.max(34, Math.floor((w - 28) / 9))   // fills screen width
+    : isTablet ? 44 : 52;
+
+  return { w, isMobile, isTablet, isDesktop, cellSize };
+}
+
 export default function SolverPage() {
   const [activePuzzle, setActivePuzzle] = useState<PuzzlePreset>(PUZZLES[0]);
-  const [grid, setGrid]                 = useState<Grid>(PUZZLES[0].request.grid);
-  const [constraints, setConstraints]   = useState<ConstraintSet>(PUZZLES[0].request.constraints);
-  const [solution, setSolution]         = useState<Grid | null>(null);
-  const [steps, setSteps]               = useState<SolveStep[]>([]);
-  const [stepIdx, setStepIdx]           = useState(0);
-  const [isPlaying, setIsPlaying]       = useState(false);
-  const [speed, setSpeed]               = useState(1000);
-  const [solving, setSolving]           = useState(false);
-  const [result, setResult]             = useState<{ unique: boolean; ms: number; error?: string } | null>(null);
-  const [activePanel, setActivePanel]   = useState<"puzzles" | "steps">("puzzles");
+  const [grid, setGrid]               = useState<Grid>(PUZZLES[0].request.grid);
+  const [constraints, setConstraints] = useState<ConstraintSet>(PUZZLES[0].request.constraints);
+  const [solution, setSolution]       = useState<Grid | null>(null);
+  const [steps, setSteps]             = useState<SolveStep[]>([]);
+  const [stepIdx, setStepIdx]         = useState(0);
+  const [isPlaying, setIsPlaying]     = useState(false);
+  const [speed, setSpeed]             = useState(1000);
+  const [solving, setSolving]         = useState(false);
+  const [result, setResult]           = useState<{ unique: boolean; ms: number; error?: string } | null>(null);
+  const [showStepsPanel, setShowStepsPanel] = useState(false); // mobile toggle
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { isMobile, isTablet, isDesktop, cellSize } = useLayout();
 
-  // ── Puzzle select ───────────────────────────────────
+  // ── Puzzle select ─────────────────────────────────────
   const selectPuzzle = useCallback((p: PuzzlePreset) => {
     setActivePuzzle(p);
     setGrid(p.request.grid);
@@ -31,9 +54,10 @@ export default function SolverPage() {
     setStepIdx(0);
     setIsPlaying(false);
     setResult(null);
+    setShowStepsPanel(false);
   }, []);
 
-  // ── Solve ───────────────────────────────────────────
+  // ── Solve ─────────────────────────────────────────────
   const handleSolve = useCallback(async () => {
     setSolving(true);
     setSolution(null);
@@ -52,10 +76,8 @@ export default function SolverPage() {
       setSolution(data.solution);
       setSteps(data.steps ?? []);
       setResult({ unique: data.unique, ms: data.solveTimeMs, error: data.error });
-      if ((data.steps ?? []).length > 0) {
-        setStepIdx(0);
-        setActivePanel("steps");
-      }
+      setStepIdx(0);
+      if ((data.steps ?? []).length > 0) setShowStepsPanel(true);
     } catch {
       setResult({ unique: false, ms: 0, error: "Network error" });
     } finally {
@@ -64,7 +86,7 @@ export default function SolverPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grid, constraints]);
 
-  // ── Playback ────────────────────────────────────────
+  // ── Playback ──────────────────────────────────────────
   const stopPlayback = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     setIsPlaying(false);
@@ -82,12 +104,12 @@ export default function SolverPage() {
   }, [steps.length, speed, stopPlayback]);
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
-  // Restart when speed changes while playing
-  useEffect(() => { if (isPlaying) { stopPlayback(); startPlayback(); } }, [speed]); // eslint-disable-line
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isPlaying) { stopPlayback(); startPlayback(); } }, [speed]);
 
   const currentStep = steps[stepIdx] ?? null;
 
-  // ── Import custom puzzle from sessionStorage (creator flow) ──
+  // Creator flow
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("creatorPuzzle");
@@ -103,170 +125,207 @@ export default function SolverPage() {
     } catch { /* ignore */ }
   }, []);
 
-  return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+  // ── Step controls shared props ─────────────────────────
+  const stepViewerProps = {
+    steps, currentStepIdx: stepIdx, isPlaying, speed,
+    onPlay: startPlayback, onPause: stopPlayback,
+    onNext: () => setStepIdx(p => Math.min(p + 1, steps.length - 1)),
+    onPrev: () => setStepIdx(p => Math.max(p - 1, 0)),
+    onJump: (i: number) => { stopPlayback(); setStepIdx(i); },
+    onSpeedChange: setSpeed,
+  };
 
-      {/* ── Title row ─────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: "1.25rem", fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>
-            {activePuzzle.name}
-          </h1>
-          <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", margin: "2px 0 0" }}>
-            {activePuzzle.description}
-          </p>
-        </div>
+  // ── Result/status badges ───────────────────────────────
+  const StatusBadges = (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {result && !result.error && (
+        <>
+          <span className="tag" style={{ fontWeight: 600 }}>
+            {result.unique ? "Unique" : "Multiple solutions"}
+          </span>
+          <span className="tag">{(result.ms / 1000).toFixed(2)}s</span>
+        </>
+      )}
+      {result?.error && (
+        <span className="tag" style={{ color: "#dc2626", borderColor: "#fca5a5", background: "#fef2f2" }}>
+          {result.error}
+        </span>
+      )}
+    </div>
+  );
 
-        {/* Status badges + solve button */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          {result && !result.error && (
-            <>
-              <span className="tag" style={{ color: "var(--text)", borderColor: "var(--border-strong)" }}>
-                {result.unique ? "Unique solution" : "Multiple solutions"}
-              </span>
-              <span className="tag">
-                {(result.ms / 1000).toFixed(2)}s
-              </span>
-            </>
-          )}
-          {result?.error && (
-            <span className="tag" style={{ color: "#dc2626", borderColor: "#fca5a5" }}>
-              {result.error}
-            </span>
-          )}
+  // ── Active constraint tags ─────────────────────────────
+  const ConstraintTags = Object.keys(constraints).filter(k => (constraints as Record<string, unknown>)[k]).length > 0 && (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center" }}>
+      {Object.keys(constraints).map(k => (
+        <span key={k} className="tag" style={{ color: `var(--c-${k.toLowerCase().replace("/", "")})`, textTransform: "capitalize" }}>
+          {k}
+        </span>
+      ))}
+    </div>
+  );
 
-          <button
-            className="btn btn-primary"
-            onClick={handleSolve}
-            disabled={solving}
-          >
-            {solving ? (
-              <><span className="spinner" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%" }} />Solving…</>
-            ) : "Solve with Z3"}
-          </button>
-        </div>
+  // ── Equation banner ────────────────────────────────────
+  const EquationBanner = currentStep && steps.length > 0 && (
+    <div style={{
+      width: "100%", maxWidth: cellSize * 9 + 4,
+      padding: "6px 12px",
+      border: "1px solid var(--border)", borderRadius: 6,
+      background: "var(--bg-subtle)",
+      display: "flex", alignItems: "baseline", gap: 8,
+    }}>
+      <span style={{ fontSize: "0.58rem", fontWeight: 700, color: "var(--text-subtle)", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.06em" }}>Eq.</span>
+      <code style={{ fontSize: "0.75rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+        {currentStep.equation}
+      </code>
+    </div>
+  );
+
+  // ── Grid section ───────────────────────────────────────
+  const GridSection = (
+    <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+      {ConstraintTags}
+      {EquationBanner}
+      <div style={{ position: "relative" }}>
+        <SudokuGrid grid={grid} solution={solution} currentStep={currentStep} constraints={constraints} cellSize={cellSize} />
+        {solving && (
+          <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.85)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 2, zIndex: 50 }}>
+            <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+              <div className="spinner" style={{ width: 22, height: 22, border: "2.5px solid var(--border)", borderTopColor: "var(--text)", borderRadius: "50%" }} />
+              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 500 }}>Solving…</span>
+            </div>
+          </div>
+        )}
       </div>
+    </section>
+  );
 
-      {/* ── Three-column layout ───────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 300px", gap: 20, alignItems: "start" }}>
+  // ── Mobile steps toggle button ─────────────────────────
+  const MobileStepsToggle = isMobile && steps.length > 0 && (
+    <button
+      onClick={() => setShowStepsPanel(v => !v)}
+      className="btn btn-outline"
+      style={{ width: "100%", justifyContent: "center", fontSize: "0.8rem" }}
+    >
+      {showStepsPanel ? "Hide Steps" : `Show Steps (${steps.length})`}
+    </button>
+  );
 
-        {/* LEFT: puzzle list + steps tabs */}
-        <aside>
-          <div style={{ display: "flex", gap: 4, padding: 4, background: "var(--bg-muted)", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12 }}>
-            {(["puzzles", "steps"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActivePanel(tab)}
-                style={{
-                  flex: 1, padding: "5px 0", borderRadius: 5, fontSize: "0.8125rem", fontWeight: 600,
-                  border: "none", cursor: "pointer", textTransform: "capitalize",
-                  background: activePanel === tab ? "var(--bg)" : "transparent",
-                  color: activePanel === tab ? "var(--text)" : "var(--text-muted)",
-                  boxShadow: activePanel === tab ? "0 1px 3px rgba(0,0,0,0.07)" : "none",
-                  transition: "all 0.15s",
-                }}
-              >
-                {tab === "steps" && steps.length ? `Steps (${steps.length})` : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+  // ── RENDER DESKTOP ─────────────────────────────────────
+  return (
+    <>
+      {/* Sticky header */}
+      <header style={{
+        position: "sticky", top: 0, zIndex: 100,
+        background: "rgba(255,255,255,0.92)", backdropFilter: "blur(10px)",
+        borderBottom: "1px solid var(--border)",
+      }}>
+        <div style={{
+          maxWidth: 1400, margin: "0 auto", padding: "0 var(--page-pad)",
+          height: isMobile ? 52 : 58,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        }}>
+          <div>
+            <h1 style={{ fontSize: isMobile ? "0.95rem" : "1.1rem", fontWeight: 700, letterSpacing: "-0.02em", margin: 0, lineHeight: 1 }}>
+              {activePuzzle.name}
+            </h1>
+            {!isMobile && (
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "2px 0 0" }}>
+                {activePuzzle.description}
+              </p>
+            )}
           </div>
-          <div style={{ maxHeight: "calc(100vh - 160px)", overflow: "auto" }}>
-            {activePanel === "puzzles"
-              ? <PuzzleSelector activeId={activePuzzle.id} onSelect={selectPuzzle} />
-              : <StepViewer steps={steps} currentStepIdx={stepIdx} isPlaying={isPlaying} speed={speed}
-                  onPlay={startPlayback} onPause={stopPlayback}
-                  onNext={() => setStepIdx(p => Math.min(p + 1, steps.length - 1))}
-                  onPrev={() => setStepIdx(p => Math.max(p - 1, 0))}
-                  onJump={i => { stopPlayback(); setStepIdx(i); }}
-                  onSpeedChange={setSpeed} />
-            }
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {!isMobile && StatusBadges}
+            <button
+              className="btn btn-primary"
+              onClick={handleSolve}
+              disabled={solving}
+              style={{ padding: isMobile ? "7px 14px" : "8px 18px", fontSize: isMobile ? "0.8rem" : "0.875rem" }}
+            >
+              {solving
+                ? <><span className="spinner" style={{ display: "inline-block", width: 13, height: 13, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%" }} /> Solving</>
+                : "Solve ▸"}
+            </button>
           </div>
-        </aside>
+        </div>
+        {isMobile && result && (
+          <div style={{ padding: "4px var(--page-pad) 6px", borderTop: "1px solid var(--border)" }}>
+            {StatusBadges}
+          </div>
+        )}
+      </header>
 
-        {/* CENTER: grid */}
-        <section style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-          {/* Active constraint tags */}
-          {Object.keys(constraints).filter(k => (constraints as Record<string, unknown>)[k]).length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, width: "100%", justifyContent: "center" }}>
-              {Object.keys(constraints).map(k => (
-                <span key={k} className="tag" style={{
-                  color: `var(--c-${k.toLowerCase().replace("/","")})`,
-                  textTransform: "capitalize",
-                }}>
-                  {k}
-                </span>
-              ))}
+      {/* Page body */}
+      <main className="page-root">
+        {isDesktop ? (
+          /* ── DESKTOP (3 columns) ─────────────────── */
+          <div className="layout-grid" style={{ gridTemplateAreas: '"sidebar center steps"', gridTemplateColumns: "var(--sidebar-w) 1fr var(--steps-w)" }}>
+            <aside className="layout-sidebar">
+              <p style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 8 }}>Puzzles</p>
+              <div style={{ maxHeight: "calc(100dvh - 140px)", overflowY: "auto" }}>
+                <PuzzleSelector activeId={activePuzzle.id} onSelect={selectPuzzle} />
+              </div>
+            </aside>
+
+            <section className="layout-center">{GridSection}</section>
+
+            <aside className="layout-steps" style={{ position: "sticky", top: 70 }}>
+              <div className="steps-panel panel" style={{ maxHeight: "calc(100dvh - 90px)", overflow: "auto" }}>
+                <p style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 10 }}>
+                  Reasoning {steps.length > 0 && `· ${steps.length} steps`}
+                </p>
+                <StepViewer {...stepViewerProps} />
+              </div>
+            </aside>
+          </div>
+
+        ) : isTablet ? (
+          /* ── TABLET (puzzle strip on top, grid + steps below) ── */
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--panel-gap)" }}>
+            <div>
+              <p style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 6 }}>Puzzles</p>
+              <div className="puzzle-list-wrap">
+                <PuzzleSelector activeId={activePuzzle.id} onSelect={selectPuzzle} />
+              </div>
             </div>
-          )}
 
-          {/* Step equation banner */}
-          {currentStep && steps.length > 0 && (
-            <div style={{
-              width: "100%", maxWidth: 468,
-              padding: "8px 14px",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              background: "var(--bg-subtle)",
-              display: "flex",
-              alignItems: "baseline",
-              gap: 8,
-            }}>
-              <span style={{ fontSize: "0.6875rem", fontWeight: 700, color: "var(--text-subtle)", flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Eq.
-              </span>
-              <code style={{ fontSize: "0.8125rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                {currentStep.equation}
-              </code>
+            <div style={{ display: "grid", gridTemplateColumns: `1fr var(--steps-w)`, gap: "var(--panel-gap)", alignItems: "start" }}>
+              {GridSection}
+              <div className="steps-panel panel" style={{ maxHeight: "calc(100dvh - 160px)", overflow: "auto" }}>
+                <p style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 10 }}>
+                  Reasoning {steps.length > 0 && `· ${steps.length}`}
+                </p>
+                <StepViewer {...stepViewerProps} />
+              </div>
             </div>
-          )}
+          </div>
 
-          {/* Grid */}
-          <div style={{ position: "relative" }}>
-            <SudokuGrid
-              grid={grid}
-              solution={solution}
-              currentStep={currentStep}
-              constraints={constraints}
-            />
-            {/* Solving overlay */}
-            {solving && (
-              <div style={{
-                position: "absolute", inset: 0,
-                background: "rgba(255,255,255,0.8)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                borderRadius: 2,
-                zIndex: 50,
-              }}>
-                <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                  <div className="spinner" style={{ width: 24, height: 24, border: "2px solid var(--border)", borderTopColor: "var(--text)", borderRadius: "50%" }} />
-                  <span style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>Solving via Z3 SMT…</span>
-                </div>
+        ) : (
+          /* ── MOBILE (stacked) ────────────────────── */
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--panel-gap)" }}>
+            <div>
+              <p style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 6 }}>Puzzles</p>
+              <div className="puzzle-list-wrap" style={{ display: "flex", flexDirection: "row", overflowX: "auto", gap: 6 }}>
+                <PuzzleSelector activeId={activePuzzle.id} onSelect={selectPuzzle} />
+              </div>
+            </div>
+
+            {GridSection}
+            {MobileStepsToggle}
+
+            {showStepsPanel && steps.length > 0 && (
+              <div className="steps-panel panel" style={{ animation: "fadeUp 0.2s ease" }}>
+                <p style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 10 }}>
+                  Reasoning · {steps.length} steps
+                </p>
+                <StepViewer {...stepViewerProps} />
               </div>
             )}
           </div>
-        </section>
-
-        {/* RIGHT: step viewer */}
-        <aside style={{ position: "sticky", top: 72 }}>
-          <div style={{ padding: 16, border: "1px solid var(--border)", borderRadius: 8, maxHeight: "calc(100vh - 100px)", overflow: "auto" }}>
-            <p style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-subtle)", marginBottom: 12 }}>
-              Visualization
-            </p>
-            <StepViewer
-              steps={steps}
-              currentStepIdx={stepIdx}
-              isPlaying={isPlaying}
-              speed={speed}
-              onPlay={startPlayback}
-              onPause={stopPlayback}
-              onNext={() => setStepIdx(p => Math.min(p + 1, steps.length - 1))}
-              onPrev={() => setStepIdx(p => Math.max(p - 1, 0))}
-              onJump={i => { stopPlayback(); setStepIdx(i); }}
-              onSpeedChange={setSpeed}
-            />
-          </div>
-        </aside>
-      </div>
-    </div>
+        )}
+      </main>
+    </>
   );
 }

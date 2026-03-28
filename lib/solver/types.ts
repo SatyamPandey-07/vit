@@ -52,11 +52,13 @@ export interface ConstraintSet {
   diagonal?: DiagonalConstraint[];
 }
 
-// ─── Visualization Step ──────────────────────────
-export type StepType =
+// ─── Solve Steps ──────────────────────────────
+export type StepAction =
   | "constraint_applied"
-  | "candidate_removed"
-  | "value_fixed"
+  | "naked_single"
+  | "hidden_single"
+  | "candidate_eliminated"
+  | "backtrack_guess"
   | "solving_start"
   | "solving_complete";
 
@@ -65,15 +67,26 @@ export interface CellHighlight {
   color: string;
 }
 
+export interface CandidateChange {
+  cell: [number, number];
+  removed: number[];
+  remaining: number[];
+}
+
+export interface SolverState {
+  assigned: [number, number, number][];
+  remaining_candidates: Record<string, number[]>;
+}
+
 export interface SolveStep {
   step_id: number;
-  type: StepType;
-  cells: [number, number][];
-  constraint: ConstraintKind;
+  action: StepAction;
+  constraint_type: ConstraintKind;
   equation: string;
-  before: Record<string, number[]>; // "r,c" → candidates
-  after: Record<string, number[]>;  // "r,c" → candidates
+  affected_cells: [number, number][];
+  candidate_changes: CandidateChange[];
   reason: string;
+  solver_state: SolverState;
   highlight: CellHighlight;
 }
 

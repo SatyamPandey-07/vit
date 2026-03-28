@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap');
 
 /* ── Design tokens ─────────────────────────────────────── */
 :root {
@@ -21,7 +21,7 @@
   --selection-bg: #e4e4e7;
   --selection-border: #09090b;
 
-  /* Constraint colours — muted, professional */
+  /* Constraint colours */
   --c-classic:  #3f3f46;
   --c-killer:   #92400e;
   --c-thermo:   #7f1d1d;
@@ -30,25 +30,33 @@
   --c-evenodd:  #14532d;
   --c-diagonal: #7c2d12;
 
-  --font: var(--font-space, "Space Grotesk"), "IBM Plex Sans", system-ui, sans-serif;
-  --font-code: var(--font-mono, "IBM Plex Mono"), "Fira Code", monospace;
+  --font: 'Inter', system-ui, sans-serif;
+  --font-code: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Layout tokens */
+  --page-pad:   24px;
+  --panel-gap:  20px;
+  --sidebar-w:  220px;
+  --steps-w:    300px;
+  --radius:     10px;
 }
 
 /* ── Base ──────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-size: 16px;
 }
 
 body {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
+  overflow-x: hidden;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────── */
@@ -59,15 +67,87 @@ body {
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
 /* ── Typography ────────────────────────────────────────── */
-h1, h2, h3 {
-  letter-spacing: -0.02em;
-  font-weight: 700;
-  color: var(--text);
+h1, h2, h3 { letter-spacing: -0.02em; font-weight: 700; color: var(--text); }
+code, kbd   { font-family: var(--font-code); font-size: 0.875em; }
+
+/* ── Layout ────────────────────────────────────────────── */
+.page-root {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px var(--page-pad) 40px;
 }
 
-code, kbd {
-  font-family: var(--font-code);
-  font-size: 0.875em;
+/* ── Main 3-column grid (desktop) ── */
+.layout-grid {
+  display: grid;
+  grid-template-areas: "sidebar center steps";
+  grid-template-columns: var(--sidebar-w) 1fr var(--steps-w);
+  gap: var(--panel-gap);
+  align-items: start;
+}
+
+/* TABLET: 2 columns — sidebar hides, step panel on right */
+@media (max-width: 1100px) {
+  :root { --steps-w: 260px; --sidebar-w: 190px; --panel-gap: 14px; }
+}
+
+@media (max-width: 900px) {
+  .layout-grid {
+    grid-template-areas:
+      "sidebar sidebar"
+      "center steps";
+    grid-template-columns: 1fr var(--steps-w);
+    grid-template-rows: auto 1fr;
+  }
+  .layout-sidebar { grid-area: sidebar; }
+  .layout-center  { grid-area: center; }
+  .layout-steps   { grid-area: steps; position: static !important; }
+
+  /* Sidebar becomes horizontal scroller on tablet */
+  .puzzle-list-wrap {
+    display: flex;
+    flex-direction: row !important;
+    overflow-x: auto;
+    gap: 6px;
+    max-height: none !important;
+    padding-bottom: 4px;
+  }
+  .puzzle-item {
+    flex-shrink: 0;
+    min-width: 140px;
+  }
+}
+
+/* MOBILE: single column */
+@media (max-width: 640px) {
+  :root {
+    --page-pad: 12px;
+    --panel-gap: 12px;
+  }
+  .layout-grid {
+    grid-template-areas:
+      "sidebar"
+      "center"
+      "steps";
+    grid-template-columns: 1fr;
+  }
+  .layout-steps { position: static !important; }
+
+  .puzzle-list-wrap {
+    display: flex;
+    flex-direction: row !important;
+    overflow-x: auto;
+    gap: 6px;
+    max-height: none !important;
+    padding-bottom: 4px;
+  }
+  .puzzle-item {
+    flex-shrink: 0;
+    min-width: 130px;
+  }
+
+  /* Steps: reduce padding */
+  .steps-panel { padding: 12px !important; }
 }
 
 /* ── Sudoku Grid ──────────────────────────────────────── */
@@ -79,45 +159,30 @@ code, kbd {
 }
 
 .sudoku-cell {
-  width: 52px;
-  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  border-right: 1px solid var(--border-grid);
-  border-bottom: 1px solid var(--border-grid);
   cursor: pointer;
   transition: background 0.1s;
-  font-size: 1.125rem;
   font-weight: 600;
   user-select: none;
+  overflow: hidden;
 }
-
-/* Thick box separators */
-.sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
-  border-right: 2px solid var(--border-box);
-}
-.sudoku-cell:nth-child(n+19):nth-child(-n+27),
-.sudoku-cell:nth-child(n+46):nth-child(-n+54) {
-  border-bottom: 2px solid var(--border-box);
-}
-/* Remove outer borders (enclosing border on grid handles it) */
-.sudoku-cell:nth-child(9n) { border-right: none; }
-.sudoku-cell:nth-child(n+73) { border-bottom: none; }
 
 .sudoku-cell:hover { background: var(--bg-muted); }
 .sudoku-cell.selected { background: var(--selection-bg); outline: 2px solid var(--selection-border); outline-offset: -2px; z-index: 2; }
 .sudoku-cell.highlighted { background: #fef9c3; }
-.sudoku-cell.given { color: var(--text); }
-.sudoku-cell.solved { color: #1d4ed8; }
-.sudoku-cell.error { background: #fef2f2; color: #dc2626; }
+.sudoku-cell.given   { color: var(--text); }
+.sudoku-cell.solved  { color: #1d4ed8; }
+.sudoku-cell.error   { background: #fef2f2; color: #dc2626; }
 
 /* ── Utility classes ──────────────────────────────────── */
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
+  padding: 16px;
 }
 
 .btn {
@@ -132,6 +197,7 @@ code, kbd {
   transition: all 0.15s;
   border: 1px solid transparent;
   white-space: nowrap;
+  font-family: var(--font);
 }
 
 .btn-primary {
@@ -139,8 +205,8 @@ code, kbd {
   color: var(--bg);
   border-color: var(--text);
 }
-.btn-primary:hover { background: #3f3f46; border-color: #3f3f46; }
-.btn-primary:active { transform: scale(0.98); }
+.btn-primary:hover   { background: #3f3f46; border-color: #3f3f46; }
+.btn-primary:active  { transform: scale(0.98); }
 .btn-primary:disabled { background: var(--border-strong); border-color: var(--border-strong); cursor: not-allowed; }
 
 .btn-outline {
@@ -148,17 +214,10 @@ code, kbd {
   color: var(--text);
   border-color: var(--border);
 }
-.btn-outline:hover { background: var(--bg-muted); border-color: var(--border-strong); }
+.btn-outline:hover  { background: var(--bg-muted); border-color: var(--border-strong); }
 .btn-outline:active { transform: scale(0.98); }
 
-.btn-ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: transparent;
-}
-.btn-ghost:hover { background: var(--bg-muted); color: var(--text); }
-
-/* ── Tag / Badge ──────────────────────────────────────── */
+/* ── Tag ──────────────────────────────────────────────── */
 .tag {
   display: inline-flex;
   align-items: center;
@@ -172,78 +231,74 @@ code, kbd {
   border: 1px solid var(--border);
 }
 
-/* ── Toggle switch ────────────────────────────────────── */
-.toggle {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
-}
-.toggle input { opacity: 0; width: 0; height: 0; }
-.toggle-slider {
-  position: absolute;
-  inset: 0;
-  background: var(--border-strong);
-  border-radius: 20px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.toggle-slider::before {
-  content: '';
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  left: 3px;
-  top: 3px;
-  background: white;
-  border-radius: 50%;
-  transition: transform 0.2s;
-}
-.toggle input:checked + .toggle-slider { background: var(--text); }
-.toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
-
-/* ── Step playback ────────────────────────────────────── */
+/* ── Step item ────────────────────────────────────────── */
 .step-item {
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.8125rem;
+  width: 100%;
+  display: block;
+  padding: 4px 7px;
+  border-radius: 5px;
+  font-size: 0.78rem;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.1s;
-  color: var(--text-muted);
+  background: transparent;
+  transition: background 0.12s, border-color 0.12s;
+  text-align: left;
 }
-.step-item:hover { background: var(--bg-muted); color: var(--text); }
-.step-item.active {
-  background: var(--bg-muted);
-  border-color: var(--border);
-  color: var(--text);
-}
+.step-item:hover  { background: var(--bg-muted) !important; }
+.step-item.active { background: var(--bg-muted); border-color: var(--border); }
 
-/* ── Constraint overlays ─────────────────────────────── */
-.cage-label {
-  position: absolute;
-  top: 2px;
-  left: 3px;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--c-killer);
-  z-index: 5;
-}
+/* ── Keyframes ────────────────────────────────────────── */
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes fadeUp  { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
 
-/* ── Transitions ─────────────────────────────────────── */
-* { transition-property: none; }
-.btn, .toggle-slider, .toggle-slider::before, .step-item, .sudoku-cell {
+.spinner { animation: spin 0.7s linear infinite; }
+
+/* ── Puzzle selector item ─────────────────────────────── */
+.puzzle-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  text-align: left;
+  font-family: var(--font);
+  width: 100%;
+  transition: background 0.12s, border-color 0.12s;
+}
+.puzzle-item:hover  { background: var(--bg-muted); }
+.puzzle-item.active { background: var(--bg-muted); border-color: var(--border); }
+
+/* ── Disable global transition override ───────────────── */
+.btn, .step-item, .sudoku-cell, .puzzle-item {
   transition-property: background, color, border-color, transform, opacity;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
+  transition-duration: 0.12s;
 }
 
-/* ── Spinner ─────────────────────────────────────────── */
-@keyframes spin { to { transform: rotate(360deg); } }
-.spinner { animation: spin 0.8s linear infinite; }
+/* ── Navbar ───────────────────────────────────────────── */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.navbar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--page-pad);
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 
-/* ── Progress bar ────────────────────────────────────── */
-@keyframes grow-x { from { width: 0; } to { /* handled via JS */ } }
-
-/* ── Fonts (Google Fonts via next/font handled in layout) */
+/* Mobile nav collapses the title */
+@media (max-width: 480px) {
+  .navbar-inner { height: 48px; }
+  .navbar-title { font-size: 0.9rem !important; }
+}

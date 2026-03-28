@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { solve } from "@/lib/solver/z3solver";
+import { solve } from "@/lib/solver/solver";
 import { SolveRequest } from "@/lib/solver/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120; // 2-minute timeout for complex puzzles
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
